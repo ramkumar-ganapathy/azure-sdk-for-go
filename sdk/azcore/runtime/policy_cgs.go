@@ -27,7 +27,7 @@ var (
 
 type CgsPolicy struct{}
 
-func NewCgsPolicy() *gsPolicy {
+func NewCgsPolicy() *CgsPolicy {
 	// load the proxy environment variables
 
 	cgs_once.Do(func() { // Ensure this runs only once
