@@ -141,7 +141,7 @@ func (c *CgsPolicy) Do(req *policy.Request) (*http.Response, error) {
 	rawReq.Host = cgsProxyHost
 	rawReq.URL.Scheme = cgsProxyProtocolScheme
 	rawReq.URL.Host = cgsProxyHost
-	fmt.Println("CGSPolicy: OriginalURL = ", origURL)
+	// fmt.Println("CGSPolicy: OriginalURL = ", origURL)
 
     // Continue with the next policy
     resp, err := req.Next()
@@ -150,37 +150,25 @@ func (c *CgsPolicy) Do(req *policy.Request) (*http.Response, error) {
 		return nil, err
 	}
 
+    dump := func(resp *http.Response) {
+        fmt.Println("CGSPolicy: Details:")
+        fmt.Println("CGSPolicy: URI:", origURL)
+        fmt.Println("CGSPolicy: Response Headers:")
+        for name, values := range resp.Header {
+            fmt.Println("CGSPolicy Header: ", name, "=", values)
+        }
+    }
+
     if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-        // Success (2xx status codes)
     } else if resp.StatusCode >= 400 && resp.StatusCode < 500 {
-        // Client-side error (4xx status codes)
         fmt.Printf("CGSPolicy: Client Error! Response Status: %s\n", resp.Status)
-        fmt.Println("CGSPolicy: Details:")
-        fmt.Println("CGSPolicy: URI:", rawReq.URL.String())
-        fmt.Println("CGSPolicy: Response Headers:")
-        for name, values := range resp.Header {
-            fmt.Println("CGSPolicy Header: ", name, "=", values)
-        }
+		dump(resp)
     } else if resp.StatusCode >= 500 && resp.StatusCode < 600 {
-        // Server-side error (5xx status codes)
         fmt.Printf("CGSPolicy: Server Error! Response Status: %s\n", resp.Status)
-        fmt.Println("CGSPolicy: Details:")
-        fmt.Println("CGSPolicy: URI:", rawReq.URL.String())
-        fmt.Println("CGSPolicy: Response Headers:")
-        for name, values := range resp.Header {
-            fmt.Println("CGSPolicy Header: ", name, "=", values)
-        }
+		dump(resp)
     } else {
         // Other response codes (3xx for redirections, etc.)
         fmt.Println("CGSPolicy: Response Status:", resp.Status)
-    }
-
-    // Now that we have the response, we can inspect or modify it
-    // For example, log the response headers or status code
-    fmt.Println("CGSPolicy Response Status:", resp.Status)
-    fmt.Println("CGSPolicy Response Headers:")
-    for name, values := range resp.Header {
-        fmt.Println("CGSPolicy Header:", name, "=", values)
     }
 
 	return resp, nil
