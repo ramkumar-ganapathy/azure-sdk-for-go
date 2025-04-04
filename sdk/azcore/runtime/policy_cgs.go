@@ -11,6 +11,8 @@ import (
     "net/http"
 	"net/url"
 	"github.com/google/uuid"
+	"time"
+	"context"
 
     "github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 )
@@ -101,6 +103,15 @@ func getNewRequestId() string {
 	return id.String()
 }
 
+func getUntilDuration(ctx context.Context) time.Duration {
+	deadline, ok := ctx.Deadline()
+	if ok {
+		return time.Until(deadline)
+	} else {
+		return 0
+	}
+}
+
 func (c *CgsPolicy) Do(req *policy.Request) (*http.Response, error) {
     rawReq := req.Raw() // Get underlying *http.Request
 
@@ -136,6 +147,7 @@ func (c *CgsPolicy) Do(req *policy.Request) (*http.Response, error) {
 	}
 
 	origURL := rawReq.URL
+	until_start := getUntilDuration(rawReq.Context())
 
 	// set the request host and URL parameters
 	rawReq.Host = cgsProxyHost
@@ -147,6 +159,11 @@ func (c *CgsPolicy) Do(req *policy.Request) (*http.Response, error) {
     resp, err := req.Next()
 	if err != nil {
 		fmt.Println("CGS Policy: Req failed :", err)
+		if err != context.Canceled {
+			fmt.Println("CGS Policy: not-cancelled other error")
+		}
+		until_end := getUntilDuration(rawReq.Context())
+		fmt.Println("CGS Policy: Req failed : until_start = ", until_start, "until_end = ", until_end)
 		return nil, err
 	}
 
