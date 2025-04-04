@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"strings"
 	"encoding/json"
+	"encoding/binary"
 	"os"
 	"sync"
+	"sync/atomic"
     "net/http"
 	"net/url"
+	"github.com/google/uuid"
 
     "github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 )
@@ -15,6 +18,7 @@ import (
 const (
     CgsProxyHostHeader = "CGS-Proxy-Host"
     CgsProxyDestinationHeader = "CGS-Proxy-Destination"
+	CgsProxyClientRequestId = "CGS-Proxy-Client-Request-ID"
 )
 
 var (
@@ -23,6 +27,9 @@ var (
 	cgsProxyProtocolScheme string
 	cgsProxyHeaders map[string]string
 	cgs_once         sync.Once
+	base_uuid		 uuid.UUID
+	base_bytes	     [16]byte
+	request_id		 uint64
 )
 
 type CgsPolicy struct{}
@@ -72,8 +79,26 @@ func NewCgsPolicy() *CgsPolicy {
 			}
 		}
 		fmt.Printf("CGSOnce: CgsNoPe: %t\n", cgsNoPe)
+
+		base_uuid = uuid.New()
+		base_bytes = base_uuid
+		for i := 8; i < 16; i++ {
+			base_bytes[i] = 0x00
+		}
 	})
     return &CgsPolicy{}
+}
+
+func getNewRequestId() string {
+	var u [16]byte
+	copy(u[:8], base_bytes[:8])
+
+	seq := atomic.AddUint64(&request_id, 1)
+
+	binary.BigEndian.PutUint64(u[8:], uint64(seq))
+
+	id := uuid.Must(uuid.FromBytes(u[:]))
+	return id.String()
 }
 
 func (c *CgsPolicy) Do(req *policy.Request) (*http.Response, error) {
@@ -97,6 +122,8 @@ func (c *CgsPolicy) Do(req *policy.Request) (*http.Response, error) {
 		}
 	}
 
+	rawReq.Header.Set(CgsProxyClientRequestId, getNewRequestId())
+
 	// set the host
 	proxy_host := rawReq.Host
 	rawReq.Header.Set(CgsProxyHostHeader, proxy_host)
@@ -108,13 +135,54 @@ func (c *CgsPolicy) Do(req *policy.Request) (*http.Response, error) {
 		rawReq.Header.Set(CgsProxyDestinationHeader, proxy_destination)
 	}
 
+	origURL := rawReq.URL
+
 	// set the request host and URL parameters
 	rawReq.Host = cgsProxyHost
 	rawReq.URL.Scheme = cgsProxyProtocolScheme
 	rawReq.URL.Host = cgsProxyHost
-	// fmt.Printf("Host = %s, URL Host = %s, Scheme = %s\n", rawReq.Host, rawReq.URL.Host, rawReq.URL.Scheme)
+	fmt.Println("CGSPolicy: OriginalURL = ", origURL)
 
     // Continue with the next policy
-    return req.Next()
+    resp, err := req.Next()
+	if err != nil {
+		fmt.Println("CGS Policy: Req failed :", err)
+		return nil, err
+	}
+
+    if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+        // Success (2xx status codes)
+    } else if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+        // Client-side error (4xx status codes)
+        fmt.Printf("CGSPolicy: Client Error! Response Status: %s\n", resp.Status)
+        fmt.Println("CGSPolicy: Details:")
+        fmt.Println("CGSPolicy: URI:", rawReq.URL.String())
+        fmt.Println("CGSPolicy: Response Headers:")
+        for name, values := range resp.Header {
+            fmt.Println("CGSPolicy Header: ", name, "=", values)
+        }
+    } else if resp.StatusCode >= 500 && resp.StatusCode < 600 {
+        // Server-side error (5xx status codes)
+        fmt.Printf("CGSPolicy: Server Error! Response Status: %s\n", resp.Status)
+        fmt.Println("CGSPolicy: Details:")
+        fmt.Println("CGSPolicy: URI:", rawReq.URL.String())
+        fmt.Println("CGSPolicy: Response Headers:")
+        for name, values := range resp.Header {
+            fmt.Println("CGSPolicy Header: ", name, "=", values)
+        }
+    } else {
+        // Other response codes (3xx for redirections, etc.)
+        fmt.Println("CGSPolicy: Response Status:", resp.Status)
+    }
+
+    // Now that we have the response, we can inspect or modify it
+    // For example, log the response headers or status code
+    fmt.Println("CGSPolicy Response Status:", resp.Status)
+    fmt.Println("CGSPolicy Response Headers:")
+    for name, values := range resp.Header {
+        fmt.Println("CGSPolicy Header:", name, "=", values)
+    }
+
+	return resp, nil
 }
 
