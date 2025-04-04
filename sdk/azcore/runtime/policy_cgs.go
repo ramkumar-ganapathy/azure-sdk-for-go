@@ -13,6 +13,8 @@ import (
 	"github.com/google/uuid"
 	"time"
 	"context"
+	"errors"
+	"runtime/debug"
 
     "github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 )
@@ -112,19 +114,32 @@ func getUntilDuration(ctx context.Context) time.Duration {
 	}
 }
 
-func (c *CgsPolicy) Do(req *policy.Request) (*http.Response, error) {
-    rawReq := req.Raw() // Get underlying *http.Request
+func (c *CgsPolicy) Do(req_in *policy.Request) (*http.Response, error) {
+    rawReq := req_in.Raw() // Get underlying *http.Request
 
 	// if no proxy is set, we are done with this stage of the pipeline
 	if cgsProxyHost == "" {
-    	return req.Next()
+		return req_in.Next()
 	}
 
 	// any URL other than blob or files, we don't intend to send to cgs
 	if ! strings.Contains(rawReq.Host, "blob.core.windows.net") &&
 		! strings.Contains(rawReq.Host, "file.core.windows.net") {
-    	return req.Next()
+		return req_in.Next()
 	}
+
+	origCtx := req_in.Raw().Context()
+	cgs_ctx, cancel := context.WithCancel(origCtx)
+	cgs_ctx = context.WithValue(cgs_ctx, "pipeline_stage", "CGSPolicy")
+	go func() {
+		<-cgs_ctx.Done()
+		fmt.Println("[CGS] Context was cancelled! Reason:", cgs_ctx.Err())
+		debug.PrintStack()
+	}()
+
+    // Replace the request context with the new one
+	newReq := req_in.Clone(cgs_ctx)
+	rawReq = newReq.Raw()
 
 	// as part of the pipline's stage add headers
 	for key, value := range cgsProxyHeaders {
@@ -156,11 +171,11 @@ func (c *CgsPolicy) Do(req *policy.Request) (*http.Response, error) {
 	// fmt.Println("CGSPolicy: OriginalURL = ", origURL)
 
     // Continue with the next policy
-    resp, err := req.Next()
+    resp, err := newReq.Next()
 	if err != nil {
 		fmt.Println("CGS Policy: Req failed :", err)
-		if err != context.Canceled {
-			fmt.Println("CGS Policy: not-cancelled other error")
+		if ! errors.Is(err, context.Canceled) {
+			fmt.Println("CGS Policy: not-cancelled, other error")
 		}
 		until_end := getUntilDuration(rawReq.Context())
 		fmt.Println("CGS Policy: Req failed : until_start = ", until_start, "until_end = ", until_end)
@@ -187,6 +202,8 @@ func (c *CgsPolicy) Do(req *policy.Request) (*http.Response, error) {
         // Other response codes (3xx for redirections, etc.)
         fmt.Println("CGSPolicy: Response Status:", resp.Status)
     }
+
+	cancel()
 
 	return resp, nil
 }
