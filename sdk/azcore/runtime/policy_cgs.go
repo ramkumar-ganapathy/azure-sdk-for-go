@@ -129,7 +129,7 @@ func (c *CgsPolicy) Do(req_in *policy.Request) (*http.Response, error) {
 	}
 
 	origCtx := req_in.Raw().Context()
-	cgs_ctx, cancel := context.WithCancel(origCtx)
+	cgs_ctx, _ := context.WithCancel(origCtx)
 	cgs_ctx = context.WithValue(cgs_ctx, "pipeline_stage", "CGSPolicy")
 	go func() {
 		<-cgs_ctx.Done()
@@ -203,7 +203,7 @@ func (c *CgsPolicy) Do(req_in *policy.Request) (*http.Response, error) {
         fmt.Println("CGSPolicy: Response Status:", resp.Status)
     }
 
-	cancel()
+	// cancel()
 
 	return resp, nil
 }
