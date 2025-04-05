@@ -14,7 +14,6 @@ import (
 	"time"
 	"context"
 	"errors"
-	"runtime/debug"
 
     "github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 )
@@ -128,19 +127,6 @@ func (c *CgsPolicy) Do(req_in *policy.Request) (*http.Response, error) {
 		return req_in.Next()
 	}
 
-	origCtx := req_in.Raw().Context()
-	cgs_ctx, _ := context.WithCancel(origCtx)
-	cgs_ctx = context.WithValue(cgs_ctx, "pipeline_stage", "CGSPolicy")
-	go func() {
-		<-cgs_ctx.Done()
-		fmt.Println("[CGS] Context was cancelled! Reason:", cgs_ctx.Err())
-		debug.PrintStack()
-	}()
-
-    // Replace the request context with the new one
-	newReq := req_in.Clone(cgs_ctx)
-	rawReq = newReq.Raw()
-
 	// as part of the pipline's stage add headers
 	for key, value := range cgsProxyHeaders {
 		if (key != CgsProxyHostHeader) {
@@ -171,7 +157,7 @@ func (c *CgsPolicy) Do(req_in *policy.Request) (*http.Response, error) {
 	// fmt.Println("CGSPolicy: OriginalURL = ", origURL)
 
     // Continue with the next policy
-    resp, err := newReq.Next()
+    resp, err := req_in.Next()
 	if err != nil {
 		fmt.Println("CGS Policy: Req failed :", err)
 		if ! errors.Is(err, context.Canceled) {
@@ -200,10 +186,8 @@ func (c *CgsPolicy) Do(req_in *policy.Request) (*http.Response, error) {
 		dump(resp)
     } else {
         // Other response codes (3xx for redirections, etc.)
-        fmt.Println("CGSPolicy: Response Status:", resp.Status)
+        fmt.Println("CGSPolicy: Response Status: Code: ", resp.StatusCode, "Status: ", resp.Status)
     }
-
-	// cancel()
 
 	return resp, nil
 }
