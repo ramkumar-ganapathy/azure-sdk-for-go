@@ -138,7 +138,7 @@ func (c *CgsPolicy) Do(req_in *policy.Request) (*http.Response, error) {
 		}
 	}
 
-	auth_token, err := cgsGetAuthToken()
+	auth_token, err := CgsGetAuthToken()
 	if err != nil {
 		rawReq.Header.Set(CgsProxyAuthorization, "Bearer "+auth_token)
 	}
