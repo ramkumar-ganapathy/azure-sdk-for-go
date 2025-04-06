@@ -23,7 +23,7 @@ const (
     CgsProxyHostHeader = "CGS-Proxy-Host"
     CgsProxyDestinationHeader = "CGS-Proxy-Destination"
 	CgsProxyClientRequestId = "CGS-Proxy-Client-Request-ID"
-	CgsProxyAuthorization = "CGS-Proxy-Authroization"
+	CgsProxyAuthorization = "Proxy-Authroization"
 )
 
 var (
