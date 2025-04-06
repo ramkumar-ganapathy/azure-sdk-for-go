@@ -14,7 +14,7 @@ import (
 	"time"
 	"context"
 	"errors"
-	"math/rand"
+	// "math/rand"
 
     "github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 )
@@ -91,7 +91,7 @@ func NewCgsPolicy() *CgsPolicy {
 			base_bytes[i] = 0x00
 		}
 
-		rand.Seed(time.Now().UnixNano())
+		// rand.Seed(time.Now().UnixNano())
 	})
     return &CgsPolicy{}
 }
@@ -143,10 +143,10 @@ func (c *CgsPolicy) Do(req_in *policy.Request) (*http.Response, error) {
 		rawReq.Header.Set(CgsProxyAuthorization, "Bearer "+auth_token)
 	}
 
-	if rand.Intn(100) == 0 {
+	// if rand.Intn(100) == 0 {
 		// 1% chance this code path is hit
-		fmt.Println("Auth: ", auth_token)
-	}
+	//	fmt.Println("Auth: ", auth_token)
+	//}
 
 	rawReq.Header.Set(CgsProxyClientRequestId, getNewRequestId())
 
