@@ -170,12 +170,12 @@ func (c *CgsPolicy) Do(req_in *policy.Request) (*http.Response, error) {
 	rawReq.URL.Host = cgsProxyHost
 	// fmt.Println("CGSPolicy: OriginalURL = ", origURL)
 
-	fmt.Println("CGSPolicy: Request Details:")
-	fmt.Println("CGSPolicy: Request URI:", origURL)
-	fmt.Println("CGSPolicy: Request Response Headers:")
-	for name, values := range rawReq.Header {
-		fmt.Println("CGSPolicy Request Header: ", name, "=", values)
-	}
+	// fmt.Println("CGSPolicy: Request Details:")
+	// fmt.Println("CGSPolicy: Request URI:", origURL)
+	// fmt.Println("CGSPolicy: Request Response Headers:")
+	// for name, values := range rawReq.Header {
+	// 	fmt.Println("CGSPolicy Request Header: ", name, "=", values)
+	// }
 
     // Continue with the next policy
     resp, err := req_in.Next()
