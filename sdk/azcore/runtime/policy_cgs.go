@@ -91,6 +91,9 @@ func NewCgsPolicy() *CgsPolicy {
 			base_bytes[i] = 0x00
 		}
 
+		cgs_stats_init()
+		fmt.Printf("CGSOnce: stats initialized")
+
 		// rand.Seed(time.Now().UnixNano())
 	})
     return &CgsPolicy{}
@@ -162,7 +165,7 @@ func (c *CgsPolicy) Do(req_in *policy.Request) (*http.Response, error) {
 	}
 
 	origURL := rawReq.URL
-	until_start := getUntilDuration(rawReq.Context())
+	start := time.Now()
 
 	// set the request host and URL parameters
 	rawReq.Host = cgsProxyHost
@@ -179,13 +182,15 @@ func (c *CgsPolicy) Do(req_in *policy.Request) (*http.Response, error) {
 
     // Continue with the next policy
     resp, err := req_in.Next()
+ 	end := time.Now()
+	lat := end.Sub(start).Milliseconds()
 	if err != nil {
 		fmt.Println("CGS Policy: Req failed :", err)
 		if ! errors.Is(err, context.Canceled) {
 			fmt.Println("CGS Policy: not-cancelled, other error")
 		}
-		until_end := getUntilDuration(rawReq.Context())
-		fmt.Println("CGS Policy: Req failed : until_start = ", until_start, "until_end = ", until_end)
+		cgs_stats_report(lat, false)
+		fmt.Println("CGS Policy: Req failed : latency = ", lat)
 		return nil, err
 	}
 
@@ -199,13 +204,17 @@ func (c *CgsPolicy) Do(req_in *policy.Request) (*http.Response, error) {
     }
 
     if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		cgs_stats_report(lat, true)
     } else if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+		cgs_stats_report(lat, false)
         fmt.Printf("CGSPolicy: Client Error! Response Status: %s\n", resp.Status)
 		dump(resp)
     } else if resp.StatusCode >= 500 && resp.StatusCode < 600 {
+		cgs_stats_report(lat, false)
         fmt.Printf("CGSPolicy: Server Error! Response Status: %s\n", resp.Status)
 		dump(resp)
     } else {
+		cgs_stats_report(lat, false)
         // Other response codes (3xx for redirections, etc.)
         fmt.Println("CGSPolicy: Response Status: Code: ", resp.StatusCode, "Status: ", resp.Status)
     }
