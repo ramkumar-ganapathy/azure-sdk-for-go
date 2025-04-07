@@ -121,66 +121,71 @@ func getUntilDuration(ctx context.Context) time.Duration {
 }
 
 func (c *CgsPolicy) Do(req_in *policy.Request) (*http.Response, error) {
+	use_cgs := true 
+
     rawReq := req_in.Raw() // Get underlying *http.Request
 
 	// if no proxy is set, we are done with this stage of the pipeline
 	if cgsProxyHost == "" {
-		return req_in.Next()
+		use_cgs = false
+		// return req_in.Next()
 	}
 
 	// any URL other than blob or files, we don't intend to send to cgs
 	if ! strings.Contains(rawReq.Host, "blob.core.windows.net") &&
 		! strings.Contains(rawReq.Host, "file.core.windows.net") {
-		return req_in.Next()
-	}
-
-	// as part of the pipline's stage add headers
-	for key, value := range cgsProxyHeaders {
-		if (key != CgsProxyHostHeader) {
-			rawReq.Header.Set(key, value)
-		}
-	}
-
-	auth_token, err := CgsGetAuthToken()
-	if err == nil {
-		rawReq.Header.Set(CgsProxyAuthorization, "Bearer "+auth_token)
-	}
-
-	// if rand.Intn(100) == 0 {
-		// 1% chance this code path is hit
-	//	fmt.Println("Auth: ", auth_token)
-	//}
-
-	rawReq.Header.Set(CgsProxyClientRequestId, getNewRequestId())
-
-	// set the host
-	proxy_host := rawReq.Host
-	rawReq.Header.Set(CgsProxyHostHeader, proxy_host)
-
-	// if there is no Pe, we need to determine the destination dynamically, else its from env,
-	// the destination specified by the environment variable
-	if (cgsNoPe) {
-		proxy_destination := rawReq.URL.Scheme + "://" + rawReq.URL.Host
-		rawReq.Header.Set(CgsProxyDestinationHeader, proxy_destination)
+		use_cgs = false
+		// return req_in.Next()
 	}
 
 	origURL := rawReq.URL
+
+    // if cgs is in use, add headers
+	if (use_cgs) {
+		// as part of the pipline's stage add headers
+		for key, value := range cgsProxyHeaders {
+			if (key != CgsProxyHostHeader) {
+				rawReq.Header.Set(key, value)
+			}
+		}
+
+		auth_token, err := CgsGetAuthToken()
+		if err == nil {
+			rawReq.Header.Set(CgsProxyAuthorization, "Bearer "+auth_token)
+		}
+
+		rawReq.Header.Set(CgsProxyClientRequestId, getNewRequestId())
+
+		// set the host
+		proxy_host := rawReq.Host
+		rawReq.Header.Set(CgsProxyHostHeader, proxy_host)
+
+		// if there is no Pe, we need to determine the destination dynamically, else its from env,
+		// the destination specified by the environment variable
+		if (cgsNoPe) {
+			proxy_destination := rawReq.URL.Scheme + "://" + rawReq.URL.Host
+			rawReq.Header.Set(CgsProxyDestinationHeader, proxy_destination)
+		}
+
+		// set the request host and URL parameters
+		rawReq.Host = cgsProxyHost
+		rawReq.URL.Scheme = cgsProxyProtocolScheme
+		rawReq.URL.Host = cgsProxyHost
+
+		/*
+    	dump_request_details := func(req *http.Request) {
+			fmt.Println("CGSPolicy: OriginalURL = ", origURL)
+			fmt.Println("CGSPolicy: Request Details:")
+			fmt.Println("CGSPolicy: Request URI:", origURL)
+			fmt.Println("CGSPolicy: Request Response Headers:")
+			for name, values := range req.Header {
+				fmt.Println("CGSPolicy Request Header: ", name, "=", values)
+			}
+		}
+		*/
+	}
+
 	start := time.Now()
-
-	// set the request host and URL parameters
-	rawReq.Host = cgsProxyHost
-	rawReq.URL.Scheme = cgsProxyProtocolScheme
-	rawReq.URL.Host = cgsProxyHost
-	// fmt.Println("CGSPolicy: OriginalURL = ", origURL)
-
-	// fmt.Println("CGSPolicy: Request Details:")
-	// fmt.Println("CGSPolicy: Request URI:", origURL)
-	// fmt.Println("CGSPolicy: Request Response Headers:")
-	// for name, values := range rawReq.Header {
-	// 	fmt.Println("CGSPolicy Request Header: ", name, "=", values)
-	// }
-
-    // Continue with the next policy
     resp, err := req_in.Next()
  	end := time.Now()
 	lat := end.Sub(start).Milliseconds()
@@ -194,7 +199,7 @@ func (c *CgsPolicy) Do(req_in *policy.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-    dump := func(resp *http.Response) {
+    dump_response_headers := func(resp *http.Response) {
         fmt.Println("CGSPolicy: Details:")
         fmt.Println("CGSPolicy: URI:", origURL)
         fmt.Println("CGSPolicy: Response Headers:")
@@ -208,15 +213,15 @@ func (c *CgsPolicy) Do(req_in *policy.Request) (*http.Response, error) {
     } else if resp.StatusCode >= 400 && resp.StatusCode < 500 {
 		cgs_stats_report(lat, false)
         fmt.Printf("CGSPolicy: Client Error! Response Status: %s\n", resp.Status)
-		dump(resp)
+		dump_response_headers(resp)
     } else if resp.StatusCode >= 500 && resp.StatusCode < 600 {
 		cgs_stats_report(lat, false)
         fmt.Printf("CGSPolicy: Server Error! Response Status: %s\n", resp.Status)
-		dump(resp)
+		dump_response_headers(resp)
     } else {
 		cgs_stats_report(lat, false)
-        // Other response codes (3xx for redirections, etc.)
         fmt.Println("CGSPolicy: Response Status: Code: ", resp.StatusCode, "Status: ", resp.Status)
+		dump_response_headers(resp)
     }
 
 	return resp, nil
