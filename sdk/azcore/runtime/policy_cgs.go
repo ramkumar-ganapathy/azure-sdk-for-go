@@ -43,6 +43,10 @@ func NewCgsPolicy() *CgsPolicy {
 	// load the proxy environment variables
 
 	cgs_once.Do(func() { // Ensure this runs only once
+		// initialize stats module
+		cgs_stats_init()
+		fmt.Printf("CGSOnce: stats initialized")
+
 		cgsProxyHeaders = make(map[string]string)
 		envValue := os.Getenv("CGS_PROXY_HEADERS")
 		if envValue == "" {
@@ -90,10 +94,6 @@ func NewCgsPolicy() *CgsPolicy {
 		for i := 8; i < 16; i++ {
 			base_bytes[i] = 0x00
 		}
-
-		cgs_stats_init()
-		fmt.Printf("CGSOnce: stats initialized")
-
 		// rand.Seed(time.Now().UnixNano())
 	})
     return &CgsPolicy{}
