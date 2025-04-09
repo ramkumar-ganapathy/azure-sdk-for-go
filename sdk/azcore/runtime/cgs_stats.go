@@ -21,7 +21,13 @@ var cgs_latency_fail= prometheus.NewHistogram(
     },
 )
 
+var cgs_stats_no_op = true
+
 func cgs_stats_init() {
+	if (cgs_stats_no_op) {
+		return
+	}
+
 	go func() {
     	http.Handle("/metrics", promhttp.Handler())
     	http.ListenAndServe(":2112", nil)  // Or any unused port
@@ -31,6 +37,10 @@ func cgs_stats_init() {
 }
 
 func cgs_stats_report(latency int64, success bool) {
+	if (cgs_stats_no_op) {
+		return
+	}
+
 	if success {
 		cgs_latency_ok.Observe(float64(latency))
 	} else {
